@@ -42,7 +42,6 @@ us-docker.pkg.dev/broad-dsde-methods/hailrunner/hailrunner:0.1.0
 | `worker_type` | String | n1-highmem-8 | Worker machine type |
 | `driver_type` | String | n1-highmem-32 | Driver (master) machine type |
 | `output_specs` | Array[String] | [] | Output copy specs: `gs://src:local_dst` |
-| `hardstop` | Int? | - | Kill everything after N minutes |
 | `script_args` | Array[String] | [] | Arguments passed to the Hail script |
 
 See the [WDL file](hailrunner/wdl/hailrunner_run.wdl) for the full list of inputs.

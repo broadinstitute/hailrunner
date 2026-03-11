@@ -3,10 +3,10 @@
 hailrunner — Dataproc lifecycle management for Hail jobs.
 
 CLI:
-    hailrunner run   --project P --script S [--workers N] [-- script args...]
-    hailrunner create  --project P [--workers N]
-    hailrunner submit  --project P --cluster C --script S [-- script args...]
-    hailrunner destroy --project P --cluster C
+    hailrunner run   --script S [--project P] [--workers N] [-- script args...]
+    hailrunner create  [--project P] [--workers N]
+    hailrunner submit  --cluster C --script S [--project P] [-- script args...]
+    hailrunner destroy --cluster C [--project P]
 
 Library:
     from hailrunner import HailCluster, ClusterConfig, SparkConfig
@@ -229,47 +229,6 @@ def _copy_outputs(specs: list[OutputSpec]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# watchdog
-# ---------------------------------------------------------------------------
-
-class _Watchdog:
-    """
-    Kill the process if a hard timeout is exceeded.
-    Accepts an optional callback to run before dying (e.g. cluster teardown).
-    """
-
-    def __init__(self, timeout_minutes: Optional[int], on_fire: Optional[callable] = None):
-        self._timer: Optional[threading.Timer] = None
-        self._timeout = timeout_minutes
-        self._on_fire = on_fire
-
-    def start(self):
-        if not self._timeout or self._timeout <= 0:
-            return
-        seconds = self._timeout * 60
-        log.info("Hardstop watchdog armed: %d minutes", self._timeout)
-        self._timer = threading.Timer(seconds, self._fire)
-        self._timer.daemon = True
-        self._timer.start()
-
-    def _fire(self):
-        log.critical("HARDSTOP: %d minute timeout exceeded.", self._timeout)
-        if self._on_fire:
-            try:
-                log.critical("HARDSTOP: Attempting cleanup before exit...")
-                self._on_fire()
-            except Exception as e:
-                log.critical("HARDSTOP: Cleanup failed: %s", e)
-        for handler in log.handlers:
-            handler.flush()
-        os._exit(99)
-
-    def cancel(self):
-        if self._timer:
-            self._timer.cancel()
-
-
-# ---------------------------------------------------------------------------
 # cluster
 # ---------------------------------------------------------------------------
 
@@ -283,25 +242,21 @@ class HailCluster:
         self,
         config: ClusterConfig,
         spark: Optional[SparkConfig] = None,
-        hardstop_minutes: Optional[int] = None,
     ):
         self.config = config
         self.spark = spark or SparkConfig()
         self.name = config.cluster_name or _generate_cluster_name()
         self.state = ClusterState.UNBORN
         self._account: Optional[str] = None
-        self._watchdog = _Watchdog(hardstop_minutes, on_fire=self._emergency_destroy)
         self._start_time: Optional[float] = None
 
     def __enter__(self) -> HailCluster:
         self._start_time = time.time()
-        self._watchdog.start()
         self.create()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.destroy()
-        self._watchdog.cancel()
         elapsed = time.time() - (self._start_time or time.time())
         if exc_type:
             log.error("Session failed after %.0fs: %s: %s", elapsed, exc_type.__name__, exc_val)
@@ -434,23 +389,6 @@ class HailCluster:
         self.state = ClusterState.DESTROYED
         self._log("Cluster destroyed.")
 
-    def _emergency_destroy(self) -> None:
-        """Best-effort teardown called from the watchdog thread."""
-        log.critical("Emergency destroy of cluster %s", self.name)
-        try:
-            subprocess.run(
-                [
-                    "gcloud", "dataproc", "clusters", "delete", "--quiet",
-                    "--project", self.config.project,
-                    "--region", self.config.region,
-                    self.name,
-                ],
-                timeout=300,
-                capture_output=True,
-            )
-        except Exception as e:
-            log.critical("Emergency destroy failed: %s", e)
-
 
 # ---------------------------------------------------------------------------
 # top-level run
@@ -462,9 +400,8 @@ def run(
     script: str = "",
     script_args: Optional[list[str]] = None,
     outputs: Optional[list[OutputSpec]] = None,
-    hardstop_minutes: Optional[int] = None,
 ) -> None:
-    with HailCluster(config, spark, hardstop_minutes) as cluster:
+    with HailCluster(config, spark) as cluster:
         cluster.submit(script, script_args)
     if outputs:
         _copy_outputs(outputs)
@@ -476,7 +413,7 @@ def run(
 
 def _add_cluster_args(parser: argparse.ArgumentParser) -> None:
     g = parser.add_argument_group("cluster")
-    g.add_argument("--project", required=True)
+    g.add_argument("--project", default=os.environ.get("GOOGLE_PROJECT"))
     g.add_argument("--region", default="us-central1")
     g.add_argument("--subnet", default=None)
     g.add_argument("--workers", type=int, default=16)
@@ -500,6 +437,8 @@ def _add_spark_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _config_from_args(args: argparse.Namespace) -> ClusterConfig:
+    if not args.project:
+        raise SystemExit("Error: --project is required (or set GOOGLE_PROJECT)")
     return ClusterConfig(
         project=args.project,
         region=args.region,
@@ -534,7 +473,6 @@ def _cmd_run(args: argparse.Namespace, script_args: list[str]) -> None:
         script=args.script,
         script_args=script_args or None,
         outputs=outputs,
-        hardstop_minutes=args.hardstop,
     )
 
 
@@ -578,7 +516,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     _add_spark_args(p_run)
     p_run.add_argument("--script", required=True, help="GCS path, URL, or local file.")
     p_run.add_argument("--output", action="append", help="gs://src:local_dst (repeatable)")
-    p_run.add_argument("--hardstop", type=int, default=None, help="Kill after N minutes.")
+
 
     p_create = sub.add_parser("create", help="Create cluster only. Prints name.")
     _add_cluster_args(p_create)
