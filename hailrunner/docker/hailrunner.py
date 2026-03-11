@@ -304,9 +304,9 @@ class HailCluster:
         if self.config.preemptibles > 0:
             cmd += ["--num-secondary-workers", str(self.config.preemptibles)]
         if self.config.worker_disk_gb:
-            cmd += ["--worker-boot-disk-size", f"{self.config.worker_disk_gb}GB"]
+            cmd += ["--worker-boot-disk-size", str(self.config.worker_disk_gb)]
         if self.config.driver_disk_gb:
-            cmd += ["--master-boot-disk-size", f"{self.config.driver_disk_gb}GB"]
+            cmd += ["--master-boot-disk-size", str(self.config.driver_disk_gb)]
         if self.config.subnet_uri:
             cmd += ["--subnet", self.config.subnet_uri]
         cmd.append(self.name)
