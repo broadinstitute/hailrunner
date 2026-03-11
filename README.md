@@ -31,7 +31,7 @@ us-docker.pkg.dev/broad-dsde-methods/hailrunner/hailrunner:0.1.0
 | Input | Type | Description |
 |-------|------|-------------|
 | `project` | String | GCP project ID |
-| `script` | File | Hail/PySpark script (GCS path works as WDL File) |
+| `script` | String | Hail/PySpark script — GCS path, HTTPS URL, or local path |
 
 ### Key optional inputs
 
@@ -71,14 +71,18 @@ cd hailrunner/docker && bash push.sh
 
 ## Usage example
 
+The `script` input accepts a GCS path, an HTTPS URL (e.g. a raw GitHub link), or a local file. This makes it easy to iterate: push a script to GitHub and point the WDL at the raw URL.
+
+### VCF → MatrixTable ([`examples/vcf_to_mt.py`](examples/vcf_to_mt.py))
+
 ```json
 {
-  "hailrunner_run.project": "my-gcp-project",
-  "hailrunner_run.script": "gs://my-bucket/scripts/my_analysis.py",
-  "hailrunner_run.script_args": ["--chrom", "chr21"],
-  "hailrunner_run.output_specs": [
-    "gs://my-bucket/results/output.tsv:output.tsv"
+  "hailrunner_run.project": "broad-dsde-methods",
+  "hailrunner_run.script": "https://raw.githubusercontent.com/broadinstitute/hailrunner/main/examples/vcf_to_mt.py",
+  "hailrunner_run.script_args": [
+    "--vcf", "gs://prod-drc-broad/aou_phasing/v9/chr20.aou.v9.phased.vcf.gz",
+    "--mt-output", "gs://your-bucket/aou_phasing/v9/chr20.aou.v9.phased.mt"
   ],
-  "hailrunner_run.workers": 32
+  "hailrunner_run.workers": 16
 }
 ```

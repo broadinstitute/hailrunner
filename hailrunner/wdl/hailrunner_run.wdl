@@ -3,7 +3,7 @@ version 1.0
 task hailrunner_run_task {
   input {
     String project
-    File   script
+    String script
     Array[String] script_args = []
     Array[String] output_specs = []
 
@@ -79,7 +79,7 @@ task hailrunner_run_task {
 workflow hailrunner_run {
   input {
     String project
-    File   script
+    String script
     Array[String] script_args = []
     Array[String] output_specs = []
 
