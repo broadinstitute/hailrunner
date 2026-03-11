@@ -436,11 +436,27 @@ def _add_spark_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--driver-memory", default="26g")
 
 
+def _detect_project() -> Optional[str]:
+    """Try gcloud config as a last resort."""
+    try:
+        out = subprocess.run(
+            ["gcloud", "config", "get-value", "project"],
+            capture_output=True, text=True, timeout=10,
+        )
+        val = out.stdout.strip()
+        if val and val != "(unset)":
+            return val
+    except Exception:
+        pass
+    return None
+
+
 def _config_from_args(args: argparse.Namespace) -> ClusterConfig:
-    if not args.project:
+    project = args.project or _detect_project()
+    if not project:
         raise SystemExit("Error: --project is required (or set GOOGLE_PROJECT)")
     return ClusterConfig(
-        project=args.project,
+        project=project,
         region=args.region,
         subnet=args.subnet,
         workers=args.workers,
