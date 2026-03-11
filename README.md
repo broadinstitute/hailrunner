@@ -40,7 +40,7 @@ us-docker.pkg.dev/broad-dsde-methods/hailrunner/hailrunner:0.1.0
 | `workers` | Int | 16 | Number of Dataproc workers |
 | `preemptibles` | Int | 0 | Number of preemptible/spot workers |
 | `worker_type` | String | n1-highmem-8 | Worker machine type |
-| `master_type` | String | n1-highmem-32 | Master machine type |
+| `driver_type` | String | n1-highmem-32 | Driver (master) machine type |
 | `output_specs` | Array[String] | [] | Output copy specs: `gs://src:local_dst` |
 | `hardstop` | Int? | - | Kill everything after N minutes |
 | `script_args` | Array[String] | [] | Arguments passed to the Hail script |

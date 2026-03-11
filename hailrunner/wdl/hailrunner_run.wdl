@@ -13,8 +13,9 @@ task hailrunner_run_task {
     Int    workers         = 16
     Int    preemptibles    = 0
     String worker_type     = "n1-highmem-8"
-    String master_type     = "n1-highmem-32"
+    String driver_type     = "n1-highmem-32"
     Int    worker_disk_gb  = 300
+    Int    driver_disk_gb  = 500
     Int    max_idle        = 60
     Int    max_age         = 1440
     String? cluster_name
@@ -51,8 +52,9 @@ task hailrunner_run_task {
       --workers ~{workers} \
       --preemptibles ~{preemptibles} \
       --worker-type ~{worker_type} \
-      --master-type ~{master_type} \
+      --driver-type ~{driver_type} \
       --worker-disk-gb ~{worker_disk_gb} \
+      --driver-disk-gb ~{driver_disk_gb} \
       --max-idle ~{max_idle} \
       --max-age ~{max_age} \
       ~{"--cluster-name " + cluster_name} \
@@ -90,8 +92,9 @@ workflow hailrunner_run {
     Int    workers         = 16
     Int    preemptibles    = 0
     String worker_type     = "n1-highmem-8"
-    String master_type     = "n1-highmem-32"
+    String driver_type     = "n1-highmem-32"
     Int    worker_disk_gb  = 300
+    Int    driver_disk_gb  = 500
     Int    max_idle        = 60
     Int    max_age         = 1440
     String? cluster_name
@@ -121,8 +124,9 @@ workflow hailrunner_run {
       workers          = workers,
       preemptibles     = preemptibles,
       worker_type      = worker_type,
-      master_type      = master_type,
+      driver_type      = driver_type,
       worker_disk_gb   = worker_disk_gb,
+      driver_disk_gb   = driver_disk_gb,
       max_idle         = max_idle,
       max_age          = max_age,
       cluster_name     = cluster_name,

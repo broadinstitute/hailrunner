@@ -50,8 +50,9 @@ class ClusterConfig:
     workers: int = 16
     preemptibles: int = 0
     worker_type: str = "n1-highmem-8"
-    master_type: str = "n1-highmem-32"
+    driver_type: str = "n1-highmem-32"
     worker_disk_gb: int = 300
+    driver_disk_gb: int = 500
     max_idle_minutes: int = 60
     max_age_minutes: int = 1440
     cluster_name: Optional[str] = None
@@ -328,9 +329,9 @@ class HailCluster:
         self.state = ClusterState.CREATING
         self._log("Creating Dataproc cluster...")
         self._log(
-            "  workers=%d preemptibles=%d type=%s master=%s disk=%dGB",
+            "  workers=%d preemptibles=%d type=%s driver=%s disk=%dGB",
             self.config.workers, self.config.preemptibles,
-            self.config.worker_type, self.config.master_type,
+            self.config.worker_type, self.config.driver_type,
             self.config.worker_disk_gb,
         )
 
@@ -341,7 +342,7 @@ class HailCluster:
             "--project", self.config.project,
             "--service-account", self.account,
             "--worker-machine-type", self.config.worker_type,
-            "--master-machine-type", self.config.master_type,
+            "--master-machine-type", self.config.driver_type,
             "--max-idle", f"{self.config.max_idle_minutes}m",
             "--max-age", f"{self.config.max_age_minutes}m",
         ]
@@ -349,6 +350,8 @@ class HailCluster:
             cmd += ["--num-secondary-workers", str(self.config.preemptibles)]
         if self.config.worker_disk_gb:
             cmd += ["--worker-boot-disk-size", f"{self.config.worker_disk_gb}GB"]
+        if self.config.driver_disk_gb:
+            cmd += ["--master-boot-disk-size", f"{self.config.driver_disk_gb}GB"]
         if self.config.subnet_uri:
             cmd += ["--subnet", self.config.subnet_uri]
         cmd.append(self.name)
@@ -479,8 +482,9 @@ def _add_cluster_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--workers", type=int, default=16)
     g.add_argument("--preemptibles", type=int, default=0)
     g.add_argument("--worker-type", default="n1-highmem-8")
-    g.add_argument("--master-type", default="n1-highmem-32")
+    g.add_argument("--driver-type", default="n1-highmem-32")
     g.add_argument("--worker-disk-gb", type=int, default=300)
+    g.add_argument("--driver-disk-gb", type=int, default=500)
     g.add_argument("--max-idle", type=int, default=60, help="Minutes")
     g.add_argument("--max-age", type=int, default=1440, help="Minutes")
     g.add_argument("--cluster-name", default=None)
@@ -503,8 +507,9 @@ def _config_from_args(args: argparse.Namespace) -> ClusterConfig:
         workers=args.workers,
         preemptibles=args.preemptibles,
         worker_type=args.worker_type,
-        master_type=args.master_type,
+        driver_type=args.driver_type,
         worker_disk_gb=args.worker_disk_gb,
+        driver_disk_gb=args.driver_disk_gb,
         max_idle_minutes=args.max_idle,
         max_age_minutes=args.max_age,
         cluster_name=args.cluster_name,
