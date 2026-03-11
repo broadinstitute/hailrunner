@@ -36,6 +36,8 @@ task hailrunner_run_task {
     String docker_image = "us-docker.pkg.dev/broad-dsde-methods/hailrunner/hailrunner:0.1.0"
   }
 
+  Array[String] output_flags = prefix("--output ", output_specs)
+
   command {
     set -euo pipefail
 
@@ -59,9 +61,9 @@ task hailrunner_run_task {
       --executor-memory ~{executor_memory} \
       --driver-cores ~{driver_cores} \
       --driver-memory ~{driver_memory} \
-      ~{if defined(hardstop) then "--hardstop ~{select_first([hardstop, 0])}" else ""} \
-      ~{sep=" " prefix("--output ", output_specs)} \
-      ~{if length(script_args) > 0 then "-- " + sep(" ", script_args) else ""}
+      ~{if defined(hardstop) then "--hardstop" else ""} ~{select_first([hardstop, 0])} \
+      ~{sep=" " output_flags} \
+      ~{true="--" false="" length(script_args) > 0} ~{sep=" " script_args}
   }
 
   output {
