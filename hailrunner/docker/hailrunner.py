@@ -46,7 +46,7 @@ log = logging.getLogger("hailrunner")
 class ClusterConfig:
     project: str
     region: str = "us-central1"
-    subnet: Optional[str] = None
+    subnet: str = "subnetwork"
     workers: int = 16
     preemptibles: int = 0
     worker_type: str = "n1-highmem-8"
@@ -415,7 +415,7 @@ def _add_cluster_args(parser: argparse.ArgumentParser) -> None:
     g = parser.add_argument_group("cluster")
     g.add_argument("--project", default=os.environ.get("GOOGLE_PROJECT"))
     g.add_argument("--region", default="us-central1")
-    g.add_argument("--subnet", default=None)
+    g.add_argument("--subnet", default="subnetwork")
     g.add_argument("--workers", type=int, default=16)
     g.add_argument("--preemptibles", type=int, default=0)
     g.add_argument("--worker-type", default="n1-highmem-8")

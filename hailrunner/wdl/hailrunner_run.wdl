@@ -9,7 +9,7 @@ task hailrunner_run_task {
 
     # Cluster config
     String region          = "us-central1"
-    String? subnet
+    String subnet            = "subnetwork"
     Int    workers         = 16
     Int    preemptibles    = 0
     String worker_type     = "n1-highmem-8"
@@ -45,7 +45,7 @@ task hailrunner_run_task {
       ~{"--project " + project} \
       --script ~{script} \
       --region ~{region} \
-      ~{"--subnet " + subnet} \
+      --subnet ~{subnet} \
       --workers ~{workers} \
       --preemptibles ~{preemptibles} \
       --worker-type ~{worker_type} \
@@ -84,7 +84,7 @@ workflow hailrunner_run {
     Array[String] output_specs = []
 
     String region          = "us-central1"
-    String? subnet
+    String subnet            = "subnetwork"
     Int    workers         = 16
     Int    preemptibles    = 0
     String worker_type     = "n1-highmem-8"
