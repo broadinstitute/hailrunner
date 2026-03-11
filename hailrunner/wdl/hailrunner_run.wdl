@@ -59,7 +59,7 @@ task hailrunner_run_task {
       --executor-memory ~{executor_memory} \
       --driver-cores ~{driver_cores} \
       --driver-memory ~{driver_memory} \
-      ~{"--hardstop " + hardstop} \
+      ~{if defined(hardstop) then "--hardstop ~{select_first([hardstop, 0])}" else ""} \
       ~{sep=" " prefix("--output ", output_specs)} \
       ~{if length(script_args) > 0 then "-- " + sep(" ", script_args) else ""}
   }
