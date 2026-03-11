@@ -1,0 +1,7 @@
+version: 1.2
+
+workflows:
+  - name: hailrunner-run
+    subclass: WDL
+    primaryDescriptorPath: /hailrunner/wdl/hailrunner_run.wdl
+    topic: Run a Hail job on an ephemeral Dataproc cluster
