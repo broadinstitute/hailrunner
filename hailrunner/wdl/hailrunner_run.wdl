@@ -3,6 +3,7 @@ version 1.0
 task hailrunner_run_task {
   input {
     String? project
+    String staging_bucket
     String script
     Array[String] script_args = []
     Array[String] output_specs = []
@@ -43,6 +44,7 @@ task hailrunner_run_task {
 
     python3 /usr/local/bin/hailrunner run \
       ~{"--project " + project} \
+      --staging-bucket ~{staging_bucket} \
       --script ~{script} \
       --region ~{region} \
       --subnet ~{subnet} \
@@ -79,6 +81,7 @@ task hailrunner_run_task {
 workflow hailrunner_run {
   input {
     String? project
+    String staging_bucket
     String script
     Array[String] script_args = []
     Array[String] output_specs = []
@@ -110,6 +113,7 @@ workflow hailrunner_run {
   call hailrunner_run_task {
     input:
       project          = project,
+      staging_bucket   = staging_bucket,
       script           = script,
       script_args      = script_args,
       output_specs     = output_specs,

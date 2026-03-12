@@ -45,6 +45,7 @@ log = logging.getLogger("hailrunner")
 @dataclass
 class ClusterConfig:
     project: str
+    staging_bucket: str
     region: str = "us-central1"
     subnet: str = "subnetwork"
     workers: int = 16
@@ -172,6 +173,19 @@ def _generate_cluster_name(prefix: str = "hailrun") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+HAIL_VERSION = "0.2.132"
+HAIL_WHEEL = f"gs://hail-common/hailctl/dataproc/{HAIL_VERSION}/hail-{HAIL_VERSION}-py3-none-any.whl"
+IMAGE_VERSION = "2.2.5-debian12"
+INIT_SCRIPT = "/usr/local/share/hailrunner/init_hail.sh"
+
+
+def _stage_init_script(bucket: str) -> str:
+    """Upload init_hail.sh to the user's staging bucket, return the gs:// URI."""
+    gcs_path = f"{bucket}/hailrunner/init_hail.sh"
+    _run(["gsutil", "cp", INIT_SCRIPT, gcs_path], "stage-init")
+    return gcs_path
+
+
 class ScriptSource(Enum):
     GCS = "gcs"
     URL = "url"
@@ -290,26 +304,41 @@ class HailCluster:
             self.config.worker_disk_gb,
         )
 
+        init_gcs = _stage_init_script(self.config.staging_bucket)
+
+        properties = {
+            "spark:spark.task.maxFailures": "20",
+            "spark:spark.driver.extraJavaOptions": "-Xss4M",
+            "spark:spark.executor.extraJavaOptions": "-Xss4M",
+            "spark:spark.speculation": "true",
+            "hdfs:dfs.replication": "1",
+            "dataproc:dataproc.logging.stackdriver.enable": "false",
+            "dataproc:dataproc.monitoring.stackdriver.enable": "false",
+        }
+        prop_str = ",".join(f"{k}={v}" for k, v in properties.items())
+
         cmd = [
-            "hailctl", "dataproc", "start",
-            "--num-workers", str(self.config.workers),
-            "--region", self.config.region,
-            "--project", self.config.project,
-            "--service-account", self.account,
-            "--worker-machine-type", self.config.worker_type,
-            "--master-machine-type", self.config.driver_type,
-            "--max-idle", f"{self.config.max_idle_minutes}m",
-            "--max-age", f"{self.config.max_age_minutes}m",
+            "gcloud", "dataproc", "clusters", "create", self.name,
+            f"--image-version={IMAGE_VERSION}",
+            f"--properties={prop_str}",
+            f"--metadata=WHEEL={HAIL_WHEEL}",
+            f"--initialization-actions={init_gcs}",
+            "--initialization-action-timeout=20m",
+            f"--region={self.config.region}",
+            f"--project={self.config.project}",
+            f"--num-workers={self.config.workers}",
+            f"--worker-machine-type={self.config.worker_type}",
+            f"--master-machine-type={self.config.driver_type}",
+            f"--master-boot-disk-size={self.config.driver_disk_gb}",
+            f"--worker-boot-disk-size={self.config.worker_disk_gb}",
+            f"--max-idle={self.config.max_idle_minutes}m",
+            f"--max-age={self.config.max_age_minutes}m",
+            f"--service-account={self.account}",
         ]
         if self.config.preemptibles > 0:
-            cmd += ["--num-secondary-workers", str(self.config.preemptibles)]
-        if self.config.worker_disk_gb:
-            cmd += ["--worker-boot-disk-size", str(self.config.worker_disk_gb)]
-        if self.config.driver_disk_gb:
-            cmd += ["--master-boot-disk-size", str(self.config.driver_disk_gb)]
+            cmd.append(f"--num-secondary-workers={self.config.preemptibles}")
         if self.config.subnet_uri:
-            cmd += ["--subnet", self.config.subnet_uri]
-        cmd.append(self.name)
+            cmd.append(f"--subnet={self.config.subnet_uri}")
 
         try:
             _run(cmd, "cluster-create")
@@ -414,6 +443,7 @@ def run(
 def _add_cluster_args(parser: argparse.ArgumentParser) -> None:
     g = parser.add_argument_group("cluster")
     g.add_argument("--project", default=os.environ.get("GOOGLE_PROJECT"))
+    g.add_argument("--staging-bucket", required=True, help="GCS bucket for staging (e.g. gs://fc-secure-...)")
     g.add_argument("--region", default="us-central1")
     g.add_argument("--subnet", default="subnetwork")
     g.add_argument("--workers", type=int, default=16)
@@ -472,6 +502,7 @@ def _config_from_args(args: argparse.Namespace) -> ClusterConfig:
         raise SystemExit("Error: --project is required (or set GOOGLE_PROJECT)")
     return ClusterConfig(
         project=project,
+        staging_bucket=args.staging_bucket,
         region=args.region,
         subnet=args.subnet,
         workers=args.workers,

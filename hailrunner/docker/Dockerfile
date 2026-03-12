@@ -1,6 +1,4 @@
 FROM python:3.11-slim
-ARG HAIL_VERSION=0.2.132
-ENV HAIL_VERSION=$HAIL_VERSION
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -8,7 +6,6 @@ RUN apt-get update && \
         apt-transport-https \
         ca-certificates \
         openjdk-21-jre-headless \
-        patch \
     && rm -rf /var/lib/apt/lists/*
 # Google Cloud SDK (tarball install — more reliable than the apt repo)
 ARG GCLOUD_VERSION=516.0.0
@@ -17,16 +14,9 @@ RUN curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/googl
     /opt/google-cloud-sdk/install.sh --quiet --path-update=false && \
     ln -s /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud && \
     ln -s /opt/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil
-# Hail (includes hailctl)
-RUN pip install --no-cache-dir hail==${HAIL_VERSION}
-# Patch hailctl: replace init_notebook.py init action with startup-script metadata
-# so clusters work on networks that block github.com (e.g. Terra)
-COPY init_hail.sh /usr/local/share/hailrunner/init_hail.sh
-COPY hailctl-startup-script.patch /tmp/hailctl-startup-script.patch
-RUN patch -p1 -d /usr/local/lib/python3.11/site-packages < /tmp/hailctl-startup-script.patch \
-    && rm /tmp/hailctl-startup-script.patch
 
 # hailrunner
+COPY init_hail.sh /usr/local/share/hailrunner/init_hail.sh
 COPY hailrunner.py /usr/local/bin/hailrunner
 RUN chmod +x /usr/local/bin/hailrunner
 ENTRYPOINT ["python3", "/usr/local/bin/hailrunner"]
