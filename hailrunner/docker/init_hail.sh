@@ -20,7 +20,7 @@ echo "Wheel: $WHEEL"
 # Copy wheel from GCS and install (pip requires the original filename)
 WHEEL_BASENAME=$(basename "$WHEEL")
 gsutil cp "$WHEEL" "/tmp/$WHEEL_BASENAME"
-pip install --quiet "/tmp/$WHEEL_BASENAME"
+pip install --no-deps --quiet "/tmp/$WHEEL_BASENAME"
 rm -f "/tmp/$WHEEL_BASENAME"
 
 # Locate the Hail JAR via pip (same approach as init_notebook.py)
