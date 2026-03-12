@@ -15,6 +15,10 @@ RUN curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/googl
     ln -s /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud && \
     ln -s /opt/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil
 
+# Pre-download Hail wheel + all dependencies for offline install on Dataproc
+ARG HAIL_VERSION=0.2.132
+RUN pip download hail==${HAIL_VERSION} -d /usr/local/share/hailrunner/wheels/
+
 # hailrunner
 COPY init_hail.sh /usr/local/share/hailrunner/init_hail.sh
 COPY hailrunner.py /usr/local/bin/hailrunner

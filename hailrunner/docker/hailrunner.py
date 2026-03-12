@@ -174,16 +174,17 @@ def _generate_cluster_name(prefix: str = "hailrun") -> str:
 
 
 HAIL_VERSION = "0.2.132"
-HAIL_WHEEL = f"gs://hail-common/hailctl/dataproc/{HAIL_VERSION}/hail-{HAIL_VERSION}-py3-none-any.whl"
 IMAGE_VERSION = "2.2.5-debian12"
 INIT_SCRIPT = "/usr/local/share/hailrunner/init_hail.sh"
+WHEELS_DIR = "/usr/local/share/hailrunner/wheels"
 
 
-def _stage_init_script(bucket: str) -> str:
-    """Upload init_hail.sh to the user's staging bucket, return the gs:// URI."""
-    gcs_path = f"{bucket}/hailrunner/init_hail.sh"
-    _run(["gsutil", "cp", INIT_SCRIPT, gcs_path], "stage-init")
-    return gcs_path
+def _stage_files(bucket: str) -> str:
+    """Upload init_hail.sh and wheels to the staging bucket, return init script GCS URI."""
+    prefix = f"{bucket}/hailrunner"
+    _run(["gsutil", "cp", INIT_SCRIPT, f"{prefix}/init_hail.sh"], "stage-init")
+    _run(["gsutil", "-m", "cp", f"{WHEELS_DIR}/*", f"{prefix}/wheels/"], "stage-wheels")
+    return f"{prefix}/init_hail.sh"
 
 
 class ScriptSource(Enum):
@@ -304,7 +305,8 @@ class HailCluster:
             self.config.worker_disk_gb,
         )
 
-        init_gcs = _stage_init_script(self.config.staging_bucket)
+        init_gcs = _stage_files(self.config.staging_bucket)
+        wheels_gcs = f"{self.config.staging_bucket}/hailrunner/wheels"
 
         properties = {
             "spark:spark.task.maxFailures": "20",
@@ -321,7 +323,7 @@ class HailCluster:
             "gcloud", "dataproc", "clusters", "create", self.name,
             f"--image-version={IMAGE_VERSION}",
             f"--properties={prop_str}",
-            f"--metadata=WHEEL={HAIL_WHEEL}",
+            f"--metadata=WHEELS={wheels_gcs}",
             f"--initialization-actions={init_gcs}",
             "--initialization-action-timeout=20m",
             f"--region={self.config.region}",

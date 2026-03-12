@@ -13,15 +13,14 @@ fi
 
 echo "=== Installing Hail on driver node ==="
 
-# Get Hail wheel path from cluster metadata
-WHEEL=$(/usr/share/google/get_metadata_value attributes/WHEEL)
-echo "Wheel: $WHEEL"
+# Download pre-bundled wheels from staging bucket (includes hail + all deps)
+WHEELS=$(/usr/share/google/get_metadata_value attributes/WHEELS)
+echo "Wheels: $WHEELS"
 
-# Copy wheel from GCS and install (pip requires the original filename)
-WHEEL_BASENAME=$(basename "$WHEEL")
-gsutil cp "$WHEEL" "/tmp/$WHEEL_BASENAME"
-pip install --no-deps --quiet "/tmp/$WHEEL_BASENAME"
-rm -f "/tmp/$WHEEL_BASENAME"
+mkdir -p /tmp/hail-wheels
+gsutil -m cp "$WHEELS/*" /tmp/hail-wheels/
+pip install --no-index --find-links=/tmp/hail-wheels/ hail
+rm -rf /tmp/hail-wheels
 
 # Locate the Hail JAR via pip (same approach as init_notebook.py)
 HAIL_HOME=$(python3 -m pip show hail | grep ^Location | awk '{print $2}')/hail
