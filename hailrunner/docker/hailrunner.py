@@ -300,7 +300,6 @@ class HailCluster:
             "--master-machine-type", self.config.driver_type,
             "--max-idle", f"{self.config.max_idle_minutes}m",
             "--max-age", f"{self.config.max_age_minutes}m",
-            "--init=",
         ]
         if self.config.preemptibles > 0:
             cmd += ["--num-secondary-workers", str(self.config.preemptibles)]
