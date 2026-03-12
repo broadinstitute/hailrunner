@@ -39,7 +39,7 @@ PY_ZIPS=$(find "$SPARK_LIB" -name '*.zip' -printf '%p:' 2>/dev/null | sed 's/:$/
 for conf_file in /etc/environment /usr/lib/spark/conf/spark-env.sh; do
     cat >> "$conf_file" <<ENV
 export PYTHONHASHSEED=0
-export PYTHONPATH=${PY_ZIPS}
+export PYTHONPATH=$PY_ZIPS
 export SPARK_HOME=/usr/lib/spark/
 export PYSPARK_PYTHON=/opt/conda/default/bin/python
 export PYSPARK_DRIVER_PYTHON=/opt/conda/default/bin/python
@@ -52,8 +52,8 @@ done
 cat >> /etc/spark/conf/spark-defaults.conf <<SPARK
 spark.executorEnv.PYTHONHASHSEED=0
 spark.app.name=Hail
-spark.jars=${HAIL_JAR}
-spark.driver.extraClassPath=${HAIL_JAR}
+spark.jars=$HAIL_JAR
+spark.driver.extraClassPath=$HAIL_JAR
 spark.executor.extraClassPath=./hail-all-spark.jar
 SPARK
 
