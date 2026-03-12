@@ -68,20 +68,83 @@ The task VM is an orchestrator, not the compute node. If the Cromwell task is pr
 cd hailrunner/docker && bash push.sh
 ```
 
-## Usage example
+## Cost estimation
+
+After every job, hailrunner logs an estimated cluster cost breakdown to stderr based on us-central1 on-demand GCP rates. This covers the driver, workers, preemptible workers, disk, and Dataproc surcharge. Example output:
+
+```
+Cost estimate (us-central1 on-demand rates):
+  Runtime:                              0.83 hrs
+  Driver (n1-standard-16 x 1):    $0.95
+  Workers (n1-highmem-8 x 16):   $9.49
+  Preemptibles (n1-highmem-8 x 32): $3.48
+  Disk (25,024 GB):                    $1.37
+  Dataproc surcharge:                   $3.98
+  ────────────────────────────────────────
+  Estimated total:                      $19.27
+```
+
+The estimate is also available programmatically via `estimate_cluster_cost(config, runtime_seconds)`.
+
+## Usage examples
 
 The `script` input accepts a GCS path, an HTTPS URL (e.g. a raw GitHub link), or a local file. This makes it easy to iterate: push a script to GitHub and point the WDL at the raw URL.
 
 ### VCF → MatrixTable ([`examples/vcf_to_mt.py`](examples/vcf_to_mt.py))
 
+Convert a single VCF to a Hail MatrixTable.
+
 ```json
 {
-  "hailrunner_run.project": "broad-dsde-methods",
+  "hailrunner_run.project": "my-gcp-project",
   "hailrunner_run.script": "https://raw.githubusercontent.com/broadinstitute/hailrunner/main/examples/vcf_to_mt.py",
   "hailrunner_run.script_args": [
-    "--vcf", "gs://prod-drc-broad/aou_phasing/v9/chr20.aou.v9.phased.vcf.gz",
-    "--mt-output", "gs://your-bucket/aou_phasing/v9/chr20.aou.v9.phased.mt"
+    "--vcf", "gs://your-bucket/vcfs/chr20.vcf.gz",
+    "--mt-output", "gs://your-bucket/output/chr20.mt"
   ],
   "hailrunner_run.workers": 16
 }
 ```
+
+### Batch VCF → MatrixTable ([`examples/vcf_to_mt_batch.py`](examples/vcf_to_mt_batch.py))
+
+Convert many VCFs to MatrixTables in a single cluster session. Takes a TSV manifest with columns `vcf_path<tab>mt_output_path`. Existing MatrixTables are skipped by default (checks for `_SUCCESS` marker), so failed runs can be restarted without repeating completed work.
+
+```json
+{
+  "hailrunner_run.script": "https://raw.githubusercontent.com/broadinstitute/hailrunner/main/examples/vcf_to_mt_batch.py",
+  "hailrunner_run.script_args": [
+    "--manifest", "gs://your-bucket/manifests/chr_all.tsv"
+  ],
+  "hailrunner_run.workers": 16,
+  "hailrunner_run.preemptibles": 32
+}
+```
+
+Manifest format (TSV, `#` comments allowed):
+
+```
+gs://your-bucket/vcfs/chr1.vcf.gz	gs://your-bucket/output/chr1.mt
+gs://your-bucket/vcfs/chr2.vcf.gz	gs://your-bucket/output/chr2.mt
+```
+
+Pass `--overwrite` to force re-conversion of existing MatrixTables.
+
+### Subset MatrixTable → VCF ([`examples/subset_mt.py`](examples/subset_mt.py))
+
+Subset a MatrixTable by samples and/or genomic regions, then export as a bgzipped, tabix-indexed VCF.
+
+```json
+{
+  "hailrunner_run.script": "https://raw.githubusercontent.com/broadinstitute/hailrunner/main/examples/subset_mt.py",
+  "hailrunner_run.script_args": [
+    "--mt", "gs://your-bucket/output/chr20.mt",
+    "--vcf-output", "gs://your-bucket/subsets/chr20_subset.vcf.bgz",
+    "--samples", "gs://your-bucket/samples/sample_ids.tsv"
+  ],
+  "hailrunner_run.workers": 16,
+  "hailrunner_run.preemptibles": 32
+}
+```
+
+The `--samples` file is a headerless TSV where the first column contains sample IDs. The optional `--regions` flag accepts comma-separated locus intervals (e.g. `chr1:1-1000000,chr2`).

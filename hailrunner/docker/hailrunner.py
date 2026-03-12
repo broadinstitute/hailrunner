@@ -91,6 +91,103 @@ class ClusterState(Enum):
 
 
 # ---------------------------------------------------------------------------
+# cost estimation
+# ---------------------------------------------------------------------------
+
+# GCP us-central1 on-demand pricing (as of 2025)
+_VCPU_HOUR = 0.0475          # n1 on-demand per vCPU
+_RAM_GB_HOUR = 0.006391      # n1 on-demand per GB RAM
+_PREEMPT_VCPU_HOUR = 0.01    # n1 preemptible per vCPU
+_PREEMPT_RAM_GB_HOUR = 0.00135  # n1 preemptible per GB RAM
+_DATAPROC_VCPU_HOUR = 0.01   # Dataproc surcharge per vCPU (all types)
+_PD_GB_MONTH = 0.04          # Standard PD per GB/month
+_PD_GB_HOUR = _PD_GB_MONTH / (30 * 24)
+
+# RAM multiplier per vCPU by n1 family
+_N1_RAM_PER_VCPU = {
+    "standard": 3.75,
+    "highmem": 6.5,
+    "highcpu": 0.9,
+}
+
+
+def _parse_machine_type(machine_type: str) -> tuple[int, float]:
+    """Parse n1-{family}-{N} into (vcpus, ram_gb). Raises ValueError if unrecognized."""
+    parts = machine_type.split("-")
+    if len(parts) != 3 or parts[0] != "n1":
+        raise ValueError(f"Unsupported machine type: {machine_type} (only n1 family supported)")
+    family = parts[1]
+    if family not in _N1_RAM_PER_VCPU:
+        raise ValueError(f"Unknown n1 family '{family}' in {machine_type}")
+    vcpus = int(parts[2])
+    ram_gb = vcpus * _N1_RAM_PER_VCPU[family]
+    return vcpus, ram_gb
+
+
+def estimate_cluster_cost(config: ClusterConfig, runtime_seconds: float) -> dict:
+    """Estimate cluster cost from config and runtime. Returns cost breakdown dict."""
+    hours = runtime_seconds / 3600
+
+    drv_vcpus, drv_ram = _parse_machine_type(config.driver_type)
+    wrk_vcpus, wrk_ram = _parse_machine_type(config.worker_type)
+
+    driver_cost = hours * (drv_vcpus * _VCPU_HOUR + drv_ram * _RAM_GB_HOUR)
+    worker_cost = hours * config.workers * (wrk_vcpus * _VCPU_HOUR + wrk_ram * _RAM_GB_HOUR)
+
+    if config.preemptibles > 0:
+        preemptible_cost = hours * config.preemptibles * (
+            wrk_vcpus * _PREEMPT_VCPU_HOUR + wrk_ram * _PREEMPT_RAM_GB_HOUR
+        )
+    else:
+        preemptible_cost = 0.0
+
+    total_disk_gb = config.driver_disk_gb + (config.workers + config.preemptibles) * config.worker_disk_gb
+    disk_cost = hours * total_disk_gb * _PD_GB_HOUR
+
+    total_vcpus = drv_vcpus + config.workers * wrk_vcpus + config.preemptibles * wrk_vcpus
+    dataproc_surcharge = hours * total_vcpus * _DATAPROC_VCPU_HOUR
+
+    return {
+        "runtime_hours": hours,
+        "driver_cost": driver_cost,
+        "worker_cost": worker_cost,
+        "preemptible_cost": preemptible_cost,
+        "disk_cost": disk_cost,
+        "dataproc_surcharge": dataproc_surcharge,
+        "total_disk_gb": total_disk_gb,
+        "total_estimated_cost": driver_cost + worker_cost + preemptible_cost + disk_cost + dataproc_surcharge,
+    }
+
+
+def _log_cost_estimate(config: ClusterConfig, runtime_seconds: float) -> None:
+    """Log a formatted cost estimate table."""
+    try:
+        est = estimate_cluster_cost(config, runtime_seconds)
+    except ValueError as e:
+        log.warning("Could not estimate cost: %s", e)
+        return
+
+    lines = [
+        "Cost estimate (us-central1 on-demand rates):",
+        f"  Runtime:                              {est['runtime_hours']:.2f} hrs",
+        f"  Driver ({config.driver_type} x 1):    ${est['driver_cost']:.2f}",
+        f"  Workers ({config.worker_type} x {config.workers}):   ${est['worker_cost']:.2f}",
+    ]
+    if config.preemptibles > 0:
+        lines.append(
+            f"  Preemptibles ({config.worker_type} x {config.preemptibles}): ${est['preemptible_cost']:.2f}"
+        )
+    lines.extend([
+        f"  Disk ({est['total_disk_gb']:,} GB):                    ${est['disk_cost']:.2f}",
+        f"  Dataproc surcharge:                   ${est['dataproc_surcharge']:.2f}",
+        f"  {'─' * 40}",
+        f"  Estimated total:                      ${est['total_estimated_cost']:.2f}",
+    ])
+    for line in lines:
+        log.info(line)
+
+
+# ---------------------------------------------------------------------------
 # subprocess helpers
 # ---------------------------------------------------------------------------
 
@@ -271,12 +368,13 @@ class HailCluster:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.destroy()
         elapsed = time.time() - (self._start_time or time.time())
+        self.destroy()
         if exc_type:
             log.error("Session failed after %.0fs: %s: %s", elapsed, exc_type.__name__, exc_val)
         else:
             log.info("Session completed in %.0fs", elapsed)
+        _log_cost_estimate(self.config, elapsed)
         return False
 
     @property
