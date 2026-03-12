@@ -437,7 +437,22 @@ def _add_spark_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _detect_project() -> Optional[str]:
-    """Try gcloud config as a last resort."""
+    """Auto-detect GCP project from metadata server or gcloud config."""
+    # GCE metadata server — works inside any GCE VM / Cromwell container
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "http://metadata.google.internal/computeMetadata/v1/project/project-id",
+            headers={"Metadata-Flavor": "Google"},
+        )
+        resp = urllib.request.urlopen(req, timeout=2)
+        val = resp.read().decode().strip()
+        if val:
+            log.info("Detected project from GCE metadata: %s", val)
+            return val
+    except Exception:
+        pass
+    # gcloud config as last resort
     try:
         out = subprocess.run(
             ["gcloud", "config", "get-value", "project"],
