@@ -17,6 +17,7 @@ task hailrunner_run_task {
     String driver_type     = "n1-highmem-32"
     Int    worker_disk_gb  = 300
     Int    driver_disk_gb  = 500
+    String disk_type       = "pd-ssd"
     Int    max_idle        = 60
     Int    max_age         = 1440
     String? cluster_name
@@ -54,6 +55,7 @@ task hailrunner_run_task {
       --driver-type ~{driver_type} \
       --worker-disk-gb ~{worker_disk_gb} \
       --driver-disk-gb ~{driver_disk_gb} \
+      --disk-type ~{disk_type} \
       --max-idle ~{max_idle} \
       --max-age ~{max_age} \
       ~{"--cluster-name " + cluster_name} \
@@ -94,6 +96,7 @@ workflow hailrunner_run {
     String driver_type     = "n1-highmem-32"
     Int    worker_disk_gb  = 300
     Int    driver_disk_gb  = 500
+    String disk_type       = "pd-ssd"
     Int    max_idle        = 60
     Int    max_age         = 1440
     String? cluster_name
@@ -125,6 +128,7 @@ workflow hailrunner_run {
       driver_type      = driver_type,
       worker_disk_gb   = worker_disk_gb,
       driver_disk_gb   = driver_disk_gb,
+      disk_type        = disk_type,
       max_idle         = max_idle,
       max_age          = max_age,
       cluster_name     = cluster_name,
