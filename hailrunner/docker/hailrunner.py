@@ -54,7 +54,7 @@ class ClusterConfig:
     driver_type: str = "n1-highmem-32"
     worker_disk_gb: int = 300
     driver_disk_gb: int = 500
-    disk_type: str = "pd-ssd"
+    disk_type: str = "pd-standard"
     max_idle_minutes: int = 60
     max_age_minutes: int = 1440
     cluster_name: Optional[str] = None
@@ -104,7 +104,7 @@ _DATAPROC_VCPU_HOUR = 0.01   # Dataproc surcharge per vCPU (all types)
 
 # Persistent disk pricing per GB/month (us-central1)
 _PD_GB_MONTH = {
-    "pd-ssd": 0.04,
+    "pd-standard": 0.04,
     "pd-balanced": 0.10,
     "pd-ssd": 0.17,
 }
@@ -148,7 +148,7 @@ def estimate_cluster_cost(config: ClusterConfig, runtime_seconds: float) -> dict
         preemptible_cost = 0.0
 
     total_disk_gb = config.driver_disk_gb + (config.workers + config.preemptibles) * config.worker_disk_gb
-    pd_gb_hour = _PD_GB_MONTH.get(config.disk_type, _PD_GB_MONTH["pd-ssd"]) / (30 * 24)
+    pd_gb_hour = _PD_GB_MONTH.get(config.disk_type, _PD_GB_MONTH["pd-standard"]) / (30 * 24)
     disk_cost = hours * total_disk_gb * pd_gb_hour
 
     total_vcpus = drv_vcpus + config.workers * wrk_vcpus + config.preemptibles * wrk_vcpus
@@ -562,9 +562,9 @@ def _add_cluster_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--driver-type", default="n1-highmem-32")
     g.add_argument("--worker-disk-gb", type=int, default=300)
     g.add_argument("--driver-disk-gb", type=int, default=500)
-    g.add_argument("--disk-type", default="pd-ssd",
-                   choices=["pd-ssd", "pd-ssd", "pd-balanced"],
-                   help="Boot disk type for all nodes (default: pd-ssd)")
+    g.add_argument("--disk-type", default="pd-standard",
+                   choices=["pd-standard", "pd-ssd", "pd-balanced"],
+                   help="Boot disk type for all nodes (default: pd-standard)")
     g.add_argument("--max-idle", type=int, default=60, help="Minutes")
     g.add_argument("--max-age", type=int, default=1440, help="Minutes")
     g.add_argument("--cluster-name", default=None)
