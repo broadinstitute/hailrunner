@@ -460,15 +460,11 @@ class HailCluster:
         self.state = ClusterState.RUNNING
         self._log("Cluster is running.")
 
-    def submit(self, script: str, script_args: Optional[list[str]] = None) -> None:
-        if self.state != ClusterState.RUNNING:
-            raise RuntimeError(f"Cannot submit in state {self.state.value}")
-
-        self.state = ClusterState.SUBMITTING
-
+    def _submit_async(self, script: str, script_args: Optional[list[str]] = None) -> str:
+        """Submit a job with --async and return the job ID."""
         with tempfile.TemporaryDirectory() as workdir:
             local_script = _resolve_script(script, workdir)
-            self._log("Submitting: %s", local_script)
+            self._log("Submitting (async): %s", local_script)
 
             cmd = [
                 "gcloud", "dataproc", "jobs", "submit", "pyspark",
@@ -478,6 +474,8 @@ class HailCluster:
                 f"--region={self.config.region}",
                 "--account", self.account,
                 "--driver-log-levels", "root=WARN",
+                "--async",
+                "--format=value(reference.jobId)",
                 "--properties",
                 (
                     f"spark.executor.cores={self.spark.executor_cores},"
@@ -490,15 +488,125 @@ class HailCluster:
                 cmd.append("--")
                 cmd.extend(script_args)
 
+            out = _run(cmd, "job-submit-async")
+            job_id = out.strip()
+            if not job_id:
+                raise RuntimeError("Failed to get job ID from async submit")
+            self._log("Job submitted: %s", job_id)
+            return job_id
+
+    def _poll_job(self, job_id: str, poll_interval: int = 30) -> str:
+        """Poll job status until terminal. Returns final state string."""
+        cmd_base = [
+            "gcloud", "dataproc", "jobs", "describe", job_id,
+            "--project", self.config.project,
+            f"--region={self.config.region}",
+            "--format=value(status.state)",
+        ]
+        terminal_states = {"DONE", "ERROR", "CANCELLED"}
+        consecutive_errors = 0
+        max_errors = 10
+
+        # Start a log-streaming process in the background
+        log_proc = self._start_log_stream(job_id)
+
+        try:
+            while True:
+                time.sleep(poll_interval)
+                try:
+                    result = subprocess.run(
+                        cmd_base, capture_output=True, text=True, timeout=30,
+                    )
+                    if result.returncode != 0:
+                        consecutive_errors += 1
+                        log.warning(
+                            "[job-poll] Poll failed (%d/%d): %s",
+                            consecutive_errors, max_errors,
+                            result.stderr.strip().split("\n")[-1] if result.stderr.strip() else f"exit {result.returncode}",
+                        )
+                        if consecutive_errors >= max_errors:
+                            raise RuntimeError(
+                                f"Job poll failed {max_errors} consecutive times, last: {result.stderr.strip()}"
+                            )
+                        continue
+
+                    consecutive_errors = 0
+                    state = result.stdout.strip()
+                    if state in terminal_states:
+                        self._log("Job %s reached state: %s", job_id, state)
+                        return state
+                    # Log progress periodically
+                    log.debug("[job-poll] %s: %s", job_id, state)
+
+                except subprocess.TimeoutExpired:
+                    consecutive_errors += 1
+                    log.warning("[job-poll] Poll timed out (%d/%d)", consecutive_errors, max_errors)
+                    if consecutive_errors >= max_errors:
+                        raise
+        finally:
+            self._stop_log_stream(log_proc)
+
+    def _start_log_stream(self, job_id: str) -> Optional[subprocess.Popen]:
+        """Start a background process to stream job output. Best-effort."""
+        cmd = [
+            "gcloud", "dataproc", "jobs", "wait", job_id,
+            "--project", self.config.project,
+            f"--region={self.config.region}",
+        ]
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            )
+
+            def _stream():
+                try:
+                    for line in proc.stdout:
+                        line = line.rstrip()
+                        if line:
+                            log.info("[job-output] %s", line)
+                except Exception:
+                    pass  # stream died, poll will catch the real status
+
+            thread = threading.Thread(target=_stream, daemon=True)
+            thread.start()
+            return proc
+        except Exception as e:
+            log.warning("Could not start log stream: %s", e)
+            return None
+
+    @staticmethod
+    def _stop_log_stream(proc: Optional[subprocess.Popen]) -> None:
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
             try:
-                _run_streaming(cmd, "job-submit")
+                proc.kill()
             except Exception:
-                self.state = ClusterState.RUNNING
-                self._log("Job FAILED", level=logging.ERROR)
-                raise
+                pass
+
+    def submit(self, script: str, script_args: Optional[list[str]] = None) -> None:
+        if self.state != ClusterState.RUNNING:
+            raise RuntimeError(f"Cannot submit in state {self.state.value}")
+
+        self.state = ClusterState.SUBMITTING
+
+        job_id = self._submit_async(script, script_args)
+        try:
+            final_state = self._poll_job(job_id)
+        except Exception:
+            self.state = ClusterState.RUNNING
+            self._log("Job poll FAILED — job %s may still be running on cluster", job_id, level=logging.ERROR)
+            raise
 
         self.state = ClusterState.RUNNING
-        self._log("Job completed.")
+        if final_state != "DONE":
+            self._log("Job %s finished with state: %s", job_id, final_state, level=logging.ERROR)
+            raise RuntimeError(f"Dataproc job {job_id} failed with state: {final_state}")
+
+        self._log("Job %s completed successfully.", job_id)
 
     def destroy(self) -> None:
         if self.state in (ClusterState.DESTROYED, ClusterState.UNBORN):

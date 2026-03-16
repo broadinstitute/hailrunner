@@ -6,9 +6,17 @@ import time
 import hail as hl
 
 
-def _mt_exists(path: str) -> bool:
+def _mt_complete(path: str) -> bool:
     """Check if a completed MatrixTable exists at path."""
     return hl.hadoop_exists(path + "/_SUCCESS")
+
+
+def _remove_mt(path: str) -> None:
+    """Remove a (possibly partial) MatrixTable directory."""
+    import subprocess
+    if hl.hadoop_exists(path):
+        print(f"CLEAN: removing {path}", file=sys.stderr)
+        subprocess.run(["gsutil", "-m", "-q", "rm", "-r", path], check=False)
 
 
 def _read_manifest(path: str) -> list[tuple[str, str]]:
@@ -37,10 +45,14 @@ def vcf_to_mt_batch(
     results = []
 
     for vcf_path, mt_path in pairs:
-        if not overwrite and _mt_exists(mt_path):
+        if not overwrite and _mt_complete(mt_path):
             print(f"SKIP (exists): {mt_path}", file=sys.stderr)
             results.append({"vcf": vcf_path, "mt": mt_path, "status": "skipped"})
             continue
+
+        # Clean up incomplete MT from a previous failed run
+        if not overwrite and hl.hadoop_exists(mt_path):
+            _remove_mt(mt_path)
 
         print(f"START: {vcf_path} -> {mt_path}", file=sys.stderr)
         t1 = time.time()
@@ -65,6 +77,7 @@ def vcf_to_mt_batch(
         except Exception as e:
             elapsed = time.time() - t1
             print(f"FAIL:  {mt_path} ({elapsed:.0f}s): {e}", file=sys.stderr)
+            _remove_mt(mt_path)
             results.append({
                 "vcf": vcf_path,
                 "mt": mt_path,
