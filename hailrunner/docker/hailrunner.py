@@ -419,8 +419,8 @@ class HailCluster:
             "spark:spark.executor.extraJavaOptions": "-Xss4M",
             "spark:spark.speculation": "true",
             "hdfs:dfs.replication": "1",
-            "dataproc:dataproc.logging.stackdriver.enable": "false",
-            "dataproc:dataproc.monitoring.stackdriver.enable": "false",
+            "dataproc:dataproc.logging.stackdriver.enable": "true",
+            "dataproc:dataproc.monitoring.stackdriver.enable": "true",
         }
         prop_str = ",".join(f"{k}={v}" for k, v in properties.items())
 
