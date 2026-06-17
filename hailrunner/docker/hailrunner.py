@@ -723,7 +723,7 @@ def _config_from_args(args: argparse.Namespace) -> ClusterConfig:
         raise SystemExit("Error: --project is required (or set GOOGLE_PROJECT)")
     return ClusterConfig(
         project=project,
-        staging_bucket=args.staging_bucket,
+        staging_bucket=args.staging_bucket.rstrip("/"),
         region=args.region,
         subnet=args.subnet,
         workers=args.workers,
